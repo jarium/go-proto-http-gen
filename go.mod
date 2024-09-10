@@ -1,4 +1,4 @@
-module protoc-gen-http
+module github.com/jarium/protoc-gen-http
 
 go 1.21.4
 
