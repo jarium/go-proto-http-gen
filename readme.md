@@ -3,7 +3,7 @@ Proto plugin that generates go http code (using gin library) from .proto files.
 
 ## Installation
 ```bash
-go get github.com/jarium/protoc-gen-http
+go install github.com/jarium/protoc-gen-http
 ``` 
 
 ## Generate Http Code
