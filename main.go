@@ -44,7 +44,7 @@ func generateFile(plugin *protogen.Plugin, file *protogen.File) {
 	g.P(`"errors"`)
 	g.P(`"github.com/gin-gonic/gin"`)
 	g.P(`"net/http"`)
-	g.P(`"protoc-gen-http/pkg/apierror"`)
+	g.P(`"github.com/jarium/protoc-gen-http/pkg/apierror"`)
 	g.P(")")
 
 	for _, service := range file.Services {
