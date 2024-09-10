@@ -1,5 +1,5 @@
 # protoc-gen-http
-Proto plugin that generates go http code from .proto files. 
+Proto plugin that generates go http code (using gin library) from .proto files. 
 
 ## Installation
 ```bash
