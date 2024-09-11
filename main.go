@@ -6,6 +6,7 @@ import (
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"os"
 )
 
 const (
@@ -63,12 +64,16 @@ func genService(g *protogen.GeneratedFile, service *protogen.Service) {
 
 	g.P("func Register", service.GoName, "HTTPServer(r *gin.Engine, srv ", service.GoName, "HTTPServer) {")
 	for _, method := range service.Methods {
-		if httpRule := getHTTPRule(method.Desc.Options().(*descriptorpb.MethodOptions)); httpRule != nil {
-			if getPattern := httpRule.GetGet(); getPattern != "" {
-				g.P(`r.GET("`, getPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
-			} else if postPattern := httpRule.GetPost(); postPattern != "" {
-				g.P(`r.POST("`, postPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
-			}
+		httpRule := getHTTPRule(method.Desc.Options().(*descriptorpb.MethodOptions))
+		if httpRule == nil {
+			fmt.Println("option (google.api.http) is not enabled on proto file, aborting")
+			os.Exit(1)
+		}
+
+		if getPattern := httpRule.GetGet(); getPattern != "" {
+			g.P(`r.GET("`, getPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
+		} else if postPattern := httpRule.GetPost(); postPattern != "" {
+			g.P(`r.POST("`, postPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
 		}
 	}
 	g.P("}")
