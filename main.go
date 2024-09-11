@@ -65,9 +65,9 @@ func genService(g *protogen.GeneratedFile, service *protogen.Service) {
 	g.P("func Register", service.GoName, "HTTPServer(r *gin.Engine, srv ", service.GoName, "HTTPServer) {")
 	for _, method := range service.Methods {
 		httpRule := getHTTPRule(method.Desc.Options().(*descriptorpb.MethodOptions))
+
 		if httpRule == nil {
-			fmt.Println("option (google.api.http) is not enabled on proto file, aborting")
-			os.Exit(1)
+			os.Exit(0) //no http option provided on .proto file
 		}
 
 		if getPattern := httpRule.GetGet(); getPattern != "" {
