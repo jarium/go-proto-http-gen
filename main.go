@@ -1,12 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"github.com/jarium/protoc-gen-http/gen"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/descriptorpb"
-	"os"
 )
 
 const (
@@ -14,8 +14,36 @@ const (
 	version    = "1.0"
 )
 
+var (
+	lib     *string
+	libGens = map[string]gen.HttpLibGen{
+		"net": gen.Net{},
+		"gin": gen.Gin{},
+	}
+	selectedLibGen gen.HttpLibGen
+)
+
 func main() {
-	protogen.Options{}.Run(func(plugin *protogen.Plugin) error {
+	var flags flag.FlagSet
+	lib = flags.String("lib", "net", "http lib that will be used for generated code")
+
+	protogen.Options{
+		ParamFunc: flags.Set,
+	}.Run(func(plugin *protogen.Plugin) error {
+		g, ok := libGens[*lib]
+
+		if !ok {
+			var libNames string
+			for n := range libGens {
+				libNames += n + ","
+			}
+
+			libNames = libNames[:len(libNames)-1]
+			return fmt.Errorf("invalid lib name provided, valid lib names: %s", libNames)
+		}
+
+		selectedLibGen = g
+
 		for _, file := range plugin.Files {
 			if !file.Generate {
 				continue
@@ -27,6 +55,12 @@ func main() {
 }
 
 func generateFile(plugin *protogen.Plugin, file *protogen.File) {
+	services := getHttpServices(file.Services)
+
+	if len(services) == 0 {
+		return //no service has http option
+	}
+
 	filename := file.GeneratedFilenamePrefix + "_http.pb.go"
 	g := plugin.NewGeneratedFile(filename, file.GoImportPath)
 
@@ -43,77 +77,62 @@ func generateFile(plugin *protogen.Plugin, file *protogen.File) {
 	g.P("import (")
 	g.P(`"context"`)
 	g.P(`"errors"`)
-	g.P(`"github.com/gin-gonic/gin"`)
+
+	selectedLibGen.Imports(g)
+
 	g.P(`"net/http"`)
 	g.P(`"github.com/jarium/protoc-gen-http/pkg/apierror"`)
 	g.P(")")
 
-	for _, service := range file.Services {
-		genService(g, service)
+	for _, s := range services {
+		genService(g, s)
 	}
 }
 
-func genService(g *protogen.GeneratedFile, service *protogen.Service) {
-	g.P("// ", service.GoName, "HTTPServer is the HTTP server interface.")
-	g.P("type ", service.GoName, "HTTPServer interface {")
-	for _, method := range service.Methods {
-		g.P(method.GoName, "(context.Context, *", method.Input.GoIdent, ") (*", method.Output.GoIdent, ", error)")
+func genService(g *protogen.GeneratedFile, hs gen.HttpService) {
+	g.P("// ", hs.S.GoName, "HTTPServer is the HTTP server interface.")
+	g.P("type ", hs.S.GoName, "HTTPServer interface {")
+	for _, method := range hs.Methods {
+		g.P(method.M.GoName, "(context.Context, *", method.M.Input.GoIdent, ") (*", method.M.Output.GoIdent, ", error)")
 	}
 	g.P("}")
 	g.P()
 
-	g.P("func Register", service.GoName, "HTTPServer(r *gin.Engine, srv ", service.GoName, "HTTPServer) {")
-	for _, method := range service.Methods {
-		httpRule := getHTTPRule(method.Desc.Options().(*descriptorpb.MethodOptions))
+	selectedLibGen.ServerRegisterFunc(g, hs)
 
-		if httpRule == nil {
-			os.Exit(0) //no http option provided on .proto file
+	g.P()
+
+	for _, method := range hs.Methods {
+		selectedLibGen.HandlerFunc(g, hs.S, method.M)
+	}
+}
+
+// getHttpServices returns the http services with their methods that has http options
+func getHttpServices(ps []*protogen.Service) []gen.HttpService {
+	var services []gen.HttpService
+
+	for _, service := range ps {
+		hs := gen.HttpService{
+			S: service,
+		}
+		for _, method := range service.Methods {
+			if method.Desc.IsStreamingClient() || method.Desc.IsStreamingServer() {
+				continue
+			}
+
+			rule, ok := proto.GetExtension(method.Desc.Options(), annotations.E_Http).(*annotations.HttpRule)
+			if rule != nil && ok {
+				hs.Methods = append(hs.Methods, gen.HttpMethod{
+					M:    method,
+					Rule: rule,
+				})
+			}
 		}
 
-		if getPattern := httpRule.GetGet(); getPattern != "" {
-			g.P(`r.GET("`, getPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
-		} else if postPattern := httpRule.GetPost(); postPattern != "" {
-			g.P(`r.POST("`, postPattern, `", _`, service.GoName, "_", method.GoName, `_HTTP_Handler(srv))`)
+		if len(hs.Methods) > 0 {
+			services = append(services, hs)
 		}
 	}
-	g.P("}")
-	g.P()
 
-	for _, method := range service.Methods {
-		genMethodHandler(g, service, method)
-	}
-}
-
-func genMethodHandler(g *protogen.GeneratedFile, service *protogen.Service, method *protogen.Method) {
-	g.P("func _", service.GoName, "_", method.GoName, `_HTTP_Handler(srv `, service.GoName, `HTTPServer) func(c *gin.Context) {`)
-	g.P("return func(c *gin.Context) {")
-	g.P("var in ", method.Input.GoIdent)
-	g.P("if err := c.ShouldBind(&in); err != nil {")
-	g.P(`c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})`)
-	g.P("return")
-	g.P("}")
-	g.P("out, err := srv.", method.GoName, `(c.Request.Context(), &in)`)
-	g.P("if err != nil {")
-	g.P("var apiErr apierror.IError")
-	g.P("if errors.As(err, &apiErr) {")
-	g.P("c.Error(apiErr.Unwrap())")
-	g.P(`c.JSON(apiErr.GetStatusCode(), gin.H{"error": apiErr.GetMessage()})`)
-	g.P("return")
-	g.P("}")
-	g.P("c.Error(err)")
-	g.P(`c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})`)
-	g.P("return")
-	g.P("}")
-	g.P("c.JSON(http.StatusOK, out)")
-	g.P("}")
-	g.P("}")
-	g.P()
-}
-
-// getHTTPRule extracts the HTTP rule from the method options.
-func getHTTPRule(options *descriptorpb.MethodOptions) *annotations.HttpRule {
-	if ext, ok := proto.GetExtension(options, annotations.E_Http).(*annotations.HttpRule); ok {
-		return ext
-	}
-	return nil
+	return services
 }
