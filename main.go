@@ -25,11 +25,15 @@ var (
 
 func main() {
 	var flags flag.FlagSet
-	lib = flags.String("lib", "net", "http lib that will be used for generated code")
+	lib = flags.String("lib", "", "http lib that will be used for generated code")
 
 	protogen.Options{
 		ParamFunc: flags.Set,
 	}.Run(func(plugin *protogen.Plugin) error {
+		if *lib == "" {
+			*lib = "net"
+		}
+
 		g, ok := libGens[*lib]
 
 		if !ok {
