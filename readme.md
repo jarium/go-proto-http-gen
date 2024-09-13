@@ -1,5 +1,5 @@
 # protoc-gen-http
-Proto plugin that generates go http code (using <a href="https://github.com/gin-gonic/gin" target="_blank">gin library</a>) from .proto files. 
+Proto plugin that generates go http code from .proto files. With **lib** flag, you can specify http lib being used for code gen, currently supporting net/http,gin.
 
 ## Installation
 ```bash
@@ -13,7 +13,7 @@ go install github.com/jarium/protoc-gen-http
 
 Then you can run the following command to generate http code:
 ```bash
-protoc --http_out={path to generated code} --http_opt=paths=source_relative --proto_path={path to  option (google.api.http) files} {path to .proto file}
+protoc --go_out={path to generated go code} --http_out={path to generated http code} --http_opt=paths=source_relative,lib=net --proto_path={path to  option (google.api.http) files} --proto_path={path to other proto folders} {path to .proto file}
 ```
 
 ## Simpler Way
