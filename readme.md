@@ -13,7 +13,7 @@ go install github.com/jarium/protoc-gen-http
 
 Then you can run the following command to generate http code:
 ```bash
-protoc --go_out={path to generated go code} --http_out={path to generated http code} --http_opt=lib=net --proto_path={path to  option (google.api.http) files} --proto_path={path to other proto folders} {path to .proto file}
+protoc --go_out={path to generated go code} --http_out={path to generated http code} --http_opt=lib={net or gin} --proto_path={path to  option (google.api.http) files} --proto_path={path to other proto folders} {path to .proto file}
 ```
 
 ## Example
