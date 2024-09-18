@@ -1,0 +1,46 @@
+{{ define "imports" }}
+    "context"
+    "errors"
+    "github.com/gorilla/mux"
+    "encoding/json"
+    "net/http"
+    "github.com/jarium/protoc-gen-http/pkg/apierror"
+{{- end }}
+
+{{ define "register" }}
+{{ $service := . }}
+func Register{{$service.Name}}HTTPServer(r *mux.Router, srv {{$service.Name}}HTTPServer) {
+    {{- range .Methods }}
+    r.HandleFunc("{{.Uri}}", _{{$service.Name}}_{{.Name}}_HTTP_Handler(srv)).Methods("{{.RequestMethod}}")
+    {{- end }}
+}
+{{- end }}
+
+{{ define "handlers"}}
+{{ $service := . }}
+{{- range .Methods }}
+func _{{$service.Name}}_{{.Name}}_HTTP_Handler(srv {{$service.Name}}HTTPServer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var in {{.In}}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		out, err := srv.{{.Name}}(r.Context(), &in)
+		if err != nil {
+			var apiErr apierror.IError
+			if errors.As(err, &apiErr) {
+				r = r.WithContext(context.WithValue(r.Context(), "error", apiErr.Unwrap()))
+				http.Error(w, apiErr.GetMessage(), apiErr.GetStatusCode())
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), "error", err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(out)
+	}
+}
+{{- end }}
+{{- end }}

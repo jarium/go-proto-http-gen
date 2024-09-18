@@ -1,0 +1,23 @@
+// {{.Entrance}}
+// {{.GoMod}}
+// version:{{.Version}}
+
+package {{.Package}}
+
+import (
+    {{ block "imports" . }}{{ end }}
+)
+
+{{- range .Services }}
+{{ $service := . }}
+// {{$service.Name}}HTTPServer is the HTTP server interface.
+type {{$service.Name}}HTTPServer interface {
+	{{- range .Methods }}
+    {{.Name}}(context.Context, *{{.In}}) (*{{.Out}}, error)
+	{{- end }}
+}
+
+{{ block "register" . }}{{ end }}
+
+{{ block "handlers" . }}{{ end }}
+{{- end }}

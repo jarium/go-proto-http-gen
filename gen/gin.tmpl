@@ -1,0 +1,44 @@
+{{ define "imports" }}
+    "context"
+	"errors"
+	"github.com/gin-gonic/gin"
+	"net/http"
+	"github.com/jarium/protoc-gen-http/pkg/apierror"
+{{- end }}
+
+{{ define "register" }}
+{{ $service := . }}
+func Register{{$service.Name}}HTTPServer(r *gin.Engine, srv {{$service.Name}}HTTPServer) {
+    {{- range .Methods }}
+    r.{{.RequestMethod}}("{{.Uri}}", _{{$service.Name}}_{{.Name}}_HTTP_Handler(srv))
+    {{- end }}
+}
+{{- end }}
+
+{{ define "handlers"}}
+{{ $service := . }}
+{{- range .Methods }}
+func _{{$service.Name}}_{{.Name}}_HTTP_Handler(srv {{$service.Name}}HTTPServer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var in {{.In}}
+		if err := c.ShouldBind(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		out, err := srv.{{.Name}}(c.Request.Context(), &in)
+		if err != nil {
+			var apiErr apierror.IError
+			if errors.As(err, &apiErr) {
+				c.Error(apiErr.Unwrap())
+				c.JSON(apiErr.GetStatusCode(), gin.H{"error": apiErr.GetMessage()})
+				return
+			}
+			c.Error(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+		c.JSON(http.StatusOK, out)
+	}
+}
+{{- end }}
+{{- end }}
